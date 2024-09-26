@@ -93,6 +93,12 @@ DATABASES = {
 }
 
 
+###################################
+# SMS
+##################################
+ANDROID_SMS_GATEWAY_LOGIN = 'sms'
+ANDROID_SMS_GATEWAY_PASSWORD = 'gGp6ZRa4'
+
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 

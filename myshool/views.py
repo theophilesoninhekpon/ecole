@@ -1,9 +1,11 @@
+import asyncio
 import random
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-import requests
 from rest_framework.authtoken.models import Token
+
+from myshool.sms_client import SMSClient
 from .serializers import PhoneNumberSerializer
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import viewsets
@@ -84,20 +86,11 @@ class RequestPhoneNumberView(APIView):
         user.code = code
         user.save()
         print(user)
-        # Simuler l'envoi du code par SMS (à implémenter avec un service comme Twilio)
-        # send_sms(phone_num, code)  # À implémenter
-        url = "https://textflow-sms-api.p.rapidapi.com/send-sms"
-        payload = {
-        	"phone_number":  user.phone_num,
-        	"service_name": "Votre code de connexion est : " + code,
-        }
-        headers = {
-        	"x-rapidapi-key": "b0f4249865mshaf8f3f4cbc40486p1591d0jsn3536dfa82e22",
-        	"x-rapidapi-host": "textflow-sms-api.p.rapidapi.com",
-        	"Content-Type": "application/json"
-        }
-        response = requests.post(url, json=payload, headers=headers)
-        print(response.json())
+        
+        # send code via sms to client
+        sms_client = SMSClient()
+        asyncio.run(sms_client.send_message(code, user.phone_num))
+
         return Response({'message': 'Code envoyé par SMS.'}, status=status.HTTP_200_OK)
         # return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
