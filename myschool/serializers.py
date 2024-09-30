@@ -26,12 +26,18 @@ class InterrosAllSerializer(serializers.ModelSerializer):
     class Meta:
         model= Interros
         fields = '__all__'
+        
 class DevoirsAllSerializer(serializers.ModelSerializer):
     class Meta:
         model= Devoirs
         fields = '__all__'
         
-        
+class TrimestresSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Trimestres
+        fields = ['start_date', 'end_date', 'is_active', 'academic_year']
+
+
 class ElevesCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model= Eleves 
@@ -81,12 +87,94 @@ class ClasseCreateSerializer(serializers.ModelSerializer):
 
         # Créer chaque matière et lier à la classe
         for matiere_data in matieres_data:
-            Matieres.objects.create(classe=classe, **matiere_data)
+            if not Matieres.objects.filter(classe=classe, name=matiere_data['name']).exists():
+                Matieres.objects.create(classe=classe, **matiere_data)
 
         return classe
     
     
-        
+class ClasseDetailSerializer(serializers.ModelSerializer):
+    trimestres = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Classes
+        fields = ['id', 'name', 'trimestres']
+
+    def get_trimestres(self, obj):
+        # Récupérer les trimestres associés à l'année académique de la classe
+        academic_year = obj.academic_year
+        trimestres = Trimestres.objects.filter(academic_year=academic_year)
+
+        trimestres_data = {}
+
+        # Récupérer les matières associées à la classe
+        matieres = Matieres.objects.filter(classe=obj)
+
+        # Pour chaque trimestre, organiser les informations
+        for trimestre in trimestres:
+            if trimestre.numero not in trimestres_data:
+                trimestres_data[trimestre.numero] = {
+                    "start_date": trimestre.start_date,
+                    "end_date": trimestre.end_date,
+                    "matieres": []
+                }
+
+            # Pour chaque matière, récupérer les élèves et leurs notes pour le trimestre actuel
+            for matiere in matieres:
+                eleves = Eleves.objects.filter(classe=obj)
+
+                interros_data = {}
+                devoirs_data = {}
+
+                for eleve in eleves:
+                    # Récupérer les interros
+                    interros = Interros.objects.filter(
+                        matiere=matiere,
+                        eleve=eleve,
+                        trimestre=trimestre
+                    ).order_by('numero')
+
+                    for interro in interros:
+                        interros_data[interro.numero] = interro.note
+
+                    # Récupérer les devoirs
+                    devoirs = Devoirs.objects.filter(
+                        matiere=matiere,
+                        eleve=eleve,
+                        trimestre=trimestre
+                    ).order_by('numero')
+
+                    for devoir in devoirs:
+                        devoirs_data[devoir.numero] = devoir.note
+
+                # Ajouter les informations de la matière
+                trimestres_data[trimestre.numero]["matieres"].append({
+                    "matiere": {
+                        "id": matiere.id,
+                        "name": matiere.name,
+                        "coef": matiere.coef,
+                        "prof": {
+                            "id": matiere.prof.id,
+                            "first_name": matiere.prof.first_name,
+                            "last_name": matiere.prof.last_name,
+                            "phone_number": matiere.prof.phone_number
+                        }
+                    },
+                    "eleves": [
+                        {
+                            "eleve_id": eleve.id,
+                            "firstname": eleve.firstname,
+                            "lastname": eleve.lastname,
+                            "interros": interros_data,
+                            "devoirs": devoirs_data,
+                        } for eleve in eleves
+                    ]
+                })
+
+        return trimestres_data
+
+    trimestres = serializers.SerializerMethodField()
+
 
 '''
 ENREGISTREMENT D'UN PROF et D'UN ADMIN
@@ -130,7 +218,7 @@ class ProfRegisterSerializer(serializers.ModelSerializer):
     
 
 '''
-RECUPERATION DES DONNES D'UN PROF
+RECUPERATION DES DONNEES D'UN PROF
 '''
 
 # Serializer pour les interros sous forme de paires clé-valeur
@@ -180,40 +268,40 @@ class EleveDetailSerializer(serializers.ModelSerializer):
         fields = ['id', 'firstname', 'lastname', 'birth_date', 'classe', 'trimestres']
 
     def get_trimestres(self, obj):
-        # Créer un dictionnaire vide pour les trimestres
+        # Récupérer les trimestres associés à l'année académique de la classe de l'élève
+        academic_year = obj.classe.academic_year
+        trimestres = Trimestres.objects.filter(academic_year=academic_year)
+
         trimestres_data = {}
 
         # Récupérer les matières de la classe de l'élève
-        classe = obj.classe
-        matieres = Matieres.objects.filter(classe=classe)
+        matieres = Matieres.objects.filter(classe=obj.classe)
 
-        # Pour chaque trimestre (1, 2, 3)
-        for trimestre_num in [1, 2, 3]:
+        for trimestre in trimestres:
             matieres_data = []
 
             for matiere in matieres:
                 prof = matiere.prof
                 eleve = obj
 
-                # Récupérer les interros pour ce trimestre et les trier par numéro
+                # Récupérer les interros et devoirs pour ce trimestre et les trier par numéro
                 interros = Interros.objects.filter(
                     matiere=matiere,
                     eleve=eleve,
-                    trimestre=trimestre_num
+                    trimestre=trimestre
                 ).order_by('numero')
 
                 interros_notes = {interro.numero: interro.note for interro in interros}
 
-                # Récupérer les devoirs pour ce trimestre et les trier par numéro
                 devoirs = Devoirs.objects.filter(
                     matiere=matiere,
                     eleve=eleve,
-                    trimestre=trimestre_num
+                    trimestre=trimestre
                 ).order_by('numero')
 
                 devoirs_notes = {devoir.numero: devoir.note for devoir in devoirs}
 
-                # Ajouter les données de la matière dans ce trimestre
+                # Ajouter les données de la matière dans le trimestre
                 matieres_data.append({
                     "matiere": matiere.name,
                     "coef": matiere.coef,
@@ -228,7 +316,9 @@ class EleveDetailSerializer(serializers.ModelSerializer):
                 })
 
             # Ajouter les matières dans l'objet du trimestre
-            trimestres_data[trimestre_num] = {
+            trimestres_data[trimestre.numero] = {
+                "start_date": trimestre.start_date,
+                "end_date": trimestre.end_date,
                 "matieres": matieres_data
             }
 
@@ -236,24 +326,33 @@ class EleveDetailSerializer(serializers.ModelSerializer):
 
 
 
-# Serializer pour un trimestre avec les élèves associés, sous forme de paires clé-valeur
-class TrimestreSerializer(serializers.Serializer):
-    trimestre = serializers.IntegerField()  # Numéro du trimestre
+# Serializer pour un trimestre avec les élèves associés sous forme de paires clé-valeur
+class TrimestreSerializer(serializers.ModelSerializer):
     eleves = serializers.SerializerMethodField()
 
+    class Meta:
+        model = Trimestres
+        fields = ['numero', 'start_date', 'end_date', 'eleves']
+
     def get_eleves(self, obj):
-        # Récupérer les élèves de la classe
+        # Récupérer la classe depuis le contexte
         classe = self.context.get('classe')
+
+        # Récupérer tous les élèves de la classe
         eleves = Eleves.objects.filter(classe=classe)
 
         # Récupérer les interros et devoirs de chaque élève pour le trimestre
         return EleveTrimestreSerializer(eleves, many=True, context={'trimestre': obj}).data
 
     def to_representation(self, instance):
-        return {instance: super().to_representation(instance)}
+        # Représentation sous forme de paires clé-valeur
+        return {
+            f"{instance.numero}": super().to_representation(instance)
+        }
 
 
-# Serializer pour les matières avec trimestres, sous forme de paires clé-valeur
+
+# Serializer pour les matières avec trimestres sous forme de paires clé-valeur
 class MatieresSerializer(serializers.ModelSerializer):
     trimestres = serializers.SerializerMethodField()
 
@@ -262,9 +361,21 @@ class MatieresSerializer(serializers.ModelSerializer):
         fields = ['name', 'coef', 'classe', 'trimestres']
 
     def get_trimestres(self, obj):
-        trimestres_data = [1, 2, 3]  # Les trois trimestres (Premier, Deuxième, Troisième)
-        classe = obj.classe  # Récupérer la classe associée à la matière
-        return TrimestreSerializer(trimestres_data, many=True, context={'classe': classe}).data
+        # Récupérer les trimestres associés à l'année académique de la classe de la matière
+        academic_year = obj.classe.academic_year
+        trimestres = Trimestres.objects.filter(academic_year=academic_year)
+
+        # Retourner les trimestres en utilisant le serializer TrimestreSerializer
+        return TrimestreSerializer(trimestres, many=True, context={'classe': obj.classe}).data
+
+    def to_representation(self, instance):
+        # Représentation sous forme de paires clé-valeur pour les matières avec trimestres
+        representation = super().to_representation(instance)
+        return {
+            f"{instance.name}": representation
+        }
+
+
     
     
 class MatieresMiniSerializer(serializers.ModelSerializer):
@@ -282,7 +393,7 @@ class ClassesSerializer(serializers.ModelSerializer):
         
 # Serializer pour les classes associées au professeur
 class ClassesMiniSerializer(serializers.ModelSerializer):
-    matieres = MatieresSerializer(many=True)
+    matieres = MatieresMiniSerializer(many=True)
 
     class Meta:
         model = Classes
@@ -313,3 +424,40 @@ class ProfesseurMiniDetailSerializer(serializers.ModelSerializer):
         # Récupérer les classes où le professeur enseigne
         classes = Classes.objects.filter(matieres__prof=obj)
         return ClassesMiniSerializer(classes, many=True).data
+
+
+
+
+'''
+SYNCHRONISATION
+'''
+class SyncInterroSerializer(serializers.Serializer):
+    numero = serializers.IntegerField()
+    note = serializers.IntegerField()
+
+class SyncDevoirSerializer(serializers.Serializer):
+    numero = serializers.IntegerField()
+    note = serializers.IntegerField()
+
+class SyncTrimestreSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    interros = SyncInterroSerializer(many=True)
+    devoirs = SyncDevoirSerializer(many=True)
+
+class SyncEleveSerializer(serializers.Serializer):
+    id = serializers.IntegerField()  # ID de l'élève
+    trimestres = SyncTrimestreSerializer(many=True)  # Liste des trimestres avec interros et devoirs
+    
+class SyncMatiereSerializer(serializers.Serializer):
+    id = serializers.IntegerField()  # ID de la matière
+    eleves = SyncEleveSerializer(many=True)  # Liste des élèves
+    
+class SyncClasseSerializer(serializers.Serializer):
+    id = serializers.IntegerField()  # ID de la classe
+    matieres = SyncMatiereSerializer(many=True)  # Liste des matières enseignées dans la classe
+
+class SyncDataSerializer(serializers.Serializer):
+    classes = SyncClasseSerializer(many=True)  # Liste des classes
+
+
+    
