@@ -33,7 +33,7 @@ class User(AbstractUser):
     password = models.CharField(max_length=128, null=True, blank=True)
     first_name = models.CharField(_("first name"), max_length=150, unique=True)
     last_name = models.CharField(_("last name"), max_length=150, unique=True)
-    email = models.EmailField(_("email address"), unique=True)
+    email = models.EmailField(_("email address"), unique=True, null=True, blank=True)
 
     # Champ de rôle pour différencier admin et prof
     ROLE_CHOICES = (
@@ -51,8 +51,6 @@ class User(AbstractUser):
 class Classes(models.Model):
     name = models.CharField(max_length=10, unique=True)
     academic_year = models.ForeignKey(Academic_years, on_delete=models.CASCADE, related_name='classes')
-
-    
 
 
 class Matieres(models.Model):

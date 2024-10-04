@@ -185,7 +185,7 @@ class AdminRegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['username', 'password', 'phone_number', 'first_name', 'last_name', 'role']
+        fields = ['username', 'password', 'phone_number', 'first_name', 'last_name', 'role', 'email']
 
     def create(self, validated_data):
         user = User.objects.create_user(**validated_data)

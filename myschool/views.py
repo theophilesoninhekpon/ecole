@@ -138,7 +138,7 @@ class VerifyCodeView(APIView):
 
         # Vérifier si le code a expiré (10 minutes d'expiration par exemple)
         if user.code and user.code_created_at:
-            if timezone.now() - user.code_created_at > timedelta(minutes=10):
+            if timezone.now() - user.code_created_at > timedelta(minutes=1):
                 return JsonResponse({'error': 'Le code a expiré.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if user.code == code:
@@ -195,7 +195,26 @@ class AdminRegisterAPIView(APIView):
             serializer = AdminRegisterSerializer(data=request.data)
             if serializer.is_valid():
                 user = serializer.save()  # Création de l'utilisateur admin
-                return JsonResponse({"message": f"Admin {user.username} created successfully."}, status=status.HTTP_201_CREATED)
+                
+                if user:
+                    # Générer un code de vérification à 6 chiffres
+                    code = str(random.randint(100000, 999999))
+                    
+                    # Stocker le code dans le profil utilisateur (sans modifier le mot de passe)
+                    user.code = code
+                    user.code_created_at = datetime.datetime.now()
+
+                    user.save()
+
+                    # Envoyer le code par SMS
+                    sms_client = SMSClient()
+                    try:
+                        asyncio.run(sms_client.send_message(code, user.phone_number))
+                    except Exception as e:
+                        return JsonResponse({'error': 'Échec de l\'envoi du SMS: ' + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                return JsonResponse({'message': 'Code envoyé par SMS.'}, status=status.HTTP_200_OK)
+                # return JsonResponse({"message": f"Admin {user.username} created successfully."}, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return JsonResponse({"detail": "Erreur :" + str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
